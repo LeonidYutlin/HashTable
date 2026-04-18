@@ -15,10 +15,11 @@ Accounted situations:
     -prev at head isnt 0
     -next at tail isnt 0
 */
-void listDump(FILE* f, List* lst, const char* commentary, const char* filename, int line);
+Error listDump_(FILE* f, List* lst, const char* commentary, 
+                const char* filename, int line);
 
 #define listDump(f, lst, commentary) \
-        listDump(f, lst, commentary, __FILE__, __LINE__)
+        listDump_(f, lst, commentary, __FILE__, __LINE__)
 
 FILE* initLogFile();
 

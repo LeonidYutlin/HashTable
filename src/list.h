@@ -4,71 +4,57 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
-
-enum ListStatus {
-    OK = 0,
-    UninitializedList,
-    DestroyedList,
-    AttemptedReinitialization,
-    InvalidParameters,
-    FailMemoryAllocation,
-    NullDataPointer,
-    NullNextPointer,
-    NullPrevPointer,
-    CorruptedCanary,
-    TailOutOfBounds,
-    HeadOutOfBounds,
-    FreeOutOfBounds,
-    LoopedConnections,
-    DanglingUnit,
-};
+#include "error.h"
 
 typedef int ListUnit;
 typedef unsigned long ListIndex;
 
-struct List;
+typedef struct {
+    ListIndex capacity;
+    bool isDoubleLinked;
+    ListUnit*    data;
+    ListIndex*   next;
+    ListIndex*   prev;
+    ListIndex    free;
+    ListIndex    freeTail;
+    Error status;
+    bool initialized;
+} List;
 
-ListStatus listInit(List* lst, size_t initialCapacity, bool isDoubleLinked = true);
-List*      listDynamicInit(size_t initialCapacity, bool isDoubleLinked = true,
-                           ListStatus* status = NULL);
+Error listInit(List* lst, size_t initialCapacity, bool isDoubleLinked);
+List* listAlloc(size_t initialCapacity, bool isDoubleLinked, Error* status);
 
-/// Note 1: If the list is single-linked, then make sure the passed in index is an actual existing element in the list
+/// Note 1: If the list is single-linked, 
+/// then make sure the passed in index is an actual existing element in the list
 /// and not a part of the free area, otherwise some undefined behaviour may arise
 /// Note 2: Does not support inserting after fictional 0th element if the list isnt empty
-ListIndex  listAddAfter(List* lst, ListIndex index, ListUnit value, ListStatus* status = NULL);
-ListIndex  listAddAfterHead(List* lst, ListUnit value, ListStatus* status = NULL);
-ListIndex  listAddAfterTail(List* lst, ListUnit value, ListStatus* status = NULL);
+ListIndex  listAddAfter(List* lst, ListIndex index, ListUnit value, Error* status);
+ListIndex  listAddAfterHead(List* lst, ListUnit value, Error* status);
+ListIndex  listAddAfterTail(List* lst, ListUnit value, Error* status);
 /// Note: any addBefore funcs do not support single-linked lists
-ListIndex  listAddBefore(List* lst, ListIndex index, ListUnit value, ListStatus* status = NULL);
-ListIndex  listAddBeforeHead(List* lst, ListUnit value, ListStatus* status = NULL);
-ListIndex  listAddBeforeTail(List* lst, ListUnit value, ListStatus* status = NULL);
+ListIndex  listAddBefore(List* lst, ListIndex index, ListUnit value, Error* status);
+ListIndex  listAddBeforeHead(List* lst, ListUnit value, Error* status);
+ListIndex  listAddBeforeTail(List* lst, ListUnit value, Error* status);
 
 /// Note: any delete funcs do not support single-linked lists
-ListStatus listDelete(List* lst, ListIndex index);
-ListStatus listDeleteHead(List* lst);
-ListStatus listDeleteTail(List* lst);
+Error listDelete(List* lst, ListIndex index);
+Error listDeleteHead(List* lst);
+Error listDeleteTail(List* lst);
 
-ListIndex  listGetHead(List* lst, ListStatus* status = NULL);
-ListIndex  listGetTail(List* lst, ListStatus* status = NULL);
-size_t     listGetCapacity(List* lst, ListStatus* status = NULL);
-ListIndex  listGetPrev(List* lst, ListIndex index, ListStatus* status = NULL);
-ListIndex  listGetNext(List* lst, ListIndex index, ListStatus* status = NULL);
-ListUnit   listGetValue(List* lst, ListIndex index, ListStatus* status = NULL);
-ListStatus listSetValue(List* lst, ListIndex index, ListUnit value);
-//ListStatus listGetStatus... thats quite literally listVerify
+ListIndex  listGetHead(List* lst, Error* status);
+ListIndex  listGetTail(List* lst, Error* status);
+size_t     listGetCapacity(List* lst, Error* status);
+ListIndex  listGetPrev(List* lst, ListIndex index, Error* status);
+ListIndex  listGetNext(List* lst, ListIndex index, Error* status);
+ListUnit   listGetValue(List* lst, ListIndex index, Error* status);
+Error listSetValue(List* lst, ListIndex index, ListUnit value);
 
-/// Note 1: linear-time complexity (O(how much unused units list has)
-/// Note 2: impossible to check for 100%-valid newCapacity
-///         without making this even more time complex, be cautious
-ListStatus listResize(List* lst, size_t newCapacity);
-/// Note: linear-time complexity
-ListStatus listLoopCheck(List* lst);
-/// Note: linear-time complexity
-ListStatus listLinearize(List* lst);
+/// Note: O(n) time complexity
+Error listLoopCheck(List* lst);
+/// Note: O(n) time complexity
+Error listLinearize(List* lst);
 
-
-
-ListStatus listDestroy(List* lst, bool isAlloced = false);
-ListStatus listVerify(List* lst);
+Error listDestroy(List* lst, bool isAlloced);
+Error listVerify(List* lst);
 
 #endif

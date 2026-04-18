@@ -1,75 +1,62 @@
 #include "dump.h"
-#include "listdef.h"
-#undef listDump
-
 #include <assert.h>
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
 
-static const size_t MAX_TIMESTAMPED_FILE_PATH_LENGTH = 128;
-static const size_t MAX_IMAGE_FILE_PATH_LENGTH = 128;
-static const size_t MAX_DOT_COMMAND_LENGTH = 512;
+#define MAX_TIMESTAMPED_FILE_PATH_LENGTH 128
+#define MAX_IMAGE_FILE_PATH_LENGTH 128
+#define MAX_DOT_COMMAND_LENGTH 512
 
-static const char* QUOTES[] = {
-    "Canary Canary Do Thy Hear Me ?",
-    "SegFault? Not on my watch, bucko",
-    "Aaaaand what has went wrong now?",
-    "None of these words are in the Bible",
-    "Et tu, Brute?",
-    "Appledog",
-    "Is my list gonna make it? Prolly not",
-    "OUR FOOD KEEPS BLOWING U-",
-    "One must imagine listDump happy...",
-    "Boy oh boy I sure hope nothing bad has happened to my list!",
-    "I ATE IT ALL",
-    "Ouch! That hurt!",
-    "So what are you gonna say at my funeral now that you've killed me",
-    "Mmm spaghetti connections",
-    "Yarn all around me!",
-    "Lists got too silly",
-    "Crawling back to me, hm?",
-    "Linked list? How about you link... uhhh",
-    "Let me break it down for you",
-    "So, this is actually quite simple!",
-    "Me when I when when you when I when he at the",
-    "You. Me. Gas station",
-    "Everything's connected",
-    "Redesign your graph. We know what we're doing.",
-    "\"This task is quite simple\" My ass",
-    "7 handshakes theory frfr",
-    "I probably should not be writing this instead of the actual code",
-    "She data on my structures till i linearize"
-};
+static const char* BG_COLOR      = "#FFFFFF";
+static const char* BAD_OUTLINE   = "#602222";
+static const char* BAD_FILL      = "#F02222";
+static const char* DEFAULT_CELL  = "#646CBD";
+static const char* TABLE_OUTLINE = "#101510";
+static const char* ADDRESS_FILL  = "#10151034";
+static const char* NEXT_FILL     = "#10151034";
+static const char* PREV_FILL     = "#10151034";
+static const char* INDEX_FILL    = "#10151034";
+static const char* VALUE_FILL    = "#10151034";
+static const char* OK_EDGE       = "#2222E0";
+static const char* BAD_EDGE      = "#E02222";
+static const char* FREE_EDGE     = "#20B412";
+static const char* FREE_OUTLINE  = "#26721F";
+static const char* FREE_FILL     = "#64BD6C";
+static const char* TAIL_OUTLINE  = "#666666";
+static const char* TAIL_FILL     = "#DDDDDD";
+static const char* HEAD_OUTLINE  = "#666666";
+static const char* HEAD_FILL     = "#DDDDDD";
 
-static char* getTimestampedString(const char* prefix, const char* suffix, unsigned int count = 0);
+static char* getTimestampedString(const char* prefix, const char* suffix, uint count);
 static int listTextDump(FILE* f, List* lst,
-                        const char* commentary, const char* filename, int line,
-                        unsigned int callCount);
-static int listGraphDump(FILE* f, List* lst, unsigned int callCount);
+                        const char* commentary, 
+                        const char* filename, int line,
+                        uint callCount);
+static int listGraphDump(FILE* f, List* lst, uint callCount);
 
 #define WARNING_PREFIX(condition) condition ? "<b><body><font color=\"red\">[!]</font></body></b>" : ""
 
-void listDump(FILE* f, List* lst, const char* commentary, const char* filename, int line) {
-    assert(f);
-    assert(filename);
-    assert(commentary);
+Error listDump_(FILE* f, List* lst, const char* commentary, 
+                const char* filename, int line) {
+    if (!f || !filename || !commentary)
+      return BadArgs;
 
-    static unsigned int callCount = 0;
+    static uint callCount = 0;
     ++callCount;
 
     listVerify(lst);
     listLoopCheck(lst);
 
-    if (listTextDump(f, lst, commentary, filename, line, callCount))
-        return;
+    if (listTextDump(f, lst, commentary, 
+                     filename, line, callCount))
+        return OK;
 
-    listGraphDump(f, lst, callCount);
+    return listGraphDump(f, lst, callCount);
 }
 
 FILE* initLogFile() {
-    time_t timeAbs = time(NULL);
-    char* name = getTimestampedString(".log/", ".html");
+    char* name = getTimestampedString(".log/", ".html", 0);
     if (!name)
         return NULL;
 
@@ -78,21 +65,15 @@ FILE* initLogFile() {
         free(name);
         return NULL;
     }
-    srand((unsigned int)timeAbs);
 
-    fprintf(f,
-            "<pre><h1>%s</h1>\n"
-            "<p><h3><i>[Q] %s\n</i></h3></p>",
-            name + strlen(".log/"),
-            QUOTES[(unsigned long)random()
-                        % (sizeof(QUOTES) / sizeof(char *))]);
+    fprintf(f, "<pre><h1>%s</h1>\n", name);
     free(name);
     return f;
 }
 
 static int listTextDump(FILE* f, List* lst,
                         const char* commentary, const char* filename, int line,
-                        unsigned int callCount) {
+                        uint callCount) {
     assert(f);
     assert(filename);
     assert(commentary);
@@ -105,7 +86,7 @@ static int listTextDump(FILE* f, List* lst,
             "List [NULL] {}\n",
             commentary,
             callCount, filename, line);
-        return -1;
+        return 1;
     }
 
     bool isDataNull = !lst->data;
@@ -122,7 +103,8 @@ static int listTextDump(FILE* f, List* lst,
             "\thead = %lu\n"
             "\ttail = %lu\n"
             "\tfree = %lu\n"
-            "\t%sstatus = %d\n"
+            "\tfreeTail = %lu\n"
+            "\t%sstatus = %u\n"
             "\t%sdata = %p\n"
             "\t%snext = %p\n"
             "\t%sprev = %p\n"
@@ -135,13 +117,14 @@ static int listTextDump(FILE* f, List* lst,
             lst->next[0],
             lst->prev[0],
             lst->free,
+            lst->freeTail,
             WARNING_PREFIX(lst->status), lst->status,
             WARNING_PREFIX(isDataNull),  lst->data,
             WARNING_PREFIX(isNextNull),  lst->next,
             WARNING_PREFIX(isPrevNull && lst->isDoubleLinked),  lst->prev);
 
     if (isDataNull)
-        return -1;
+        return 1;
 
     for (ListIndex i = 0; i < lst->capacity; i++) {
         fprintf(f,
@@ -156,46 +139,29 @@ static int listTextDump(FILE* f, List* lst,
     return 0;
 }
 
-static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
+static int listGraphDump(FILE* f, List* lst, uint callCount) {
     assert(f);
     assert(lst);
 
     if ((!lst->prev && lst->isDoubleLinked) || !lst->next) {
-        fputs("Prev or Next are NULL in a list that requires them to be present! Im not gonna graph dump\n", f);
-        return -1;
+        fputs("Prev or Next are NULL in a list that requires them to be present! "
+              "I'm not gonna graph dump\n", f);
+        return Fail;
     }
 
-    const char* BG_COLOR      = "#FFFFFF";
-    const char* BAD_OUTLINE   = "#602222";
-    const char* BAD_FILL      = "#F02222";
-    const char* DEFAULT_CELL  = "#646CBD";
-    const char* TABLE_OUTLINE = "#101510";
-    const char* ADDRESS_FILL  = "#10151034";
-    const char* NEXT_FILL     = "#10151034";
-    const char* PREV_FILL     = "#10151034";
-    const char* INDEX_FILL    = "#10151034";
-    const char* VALUE_FILL    = "#10151034";
-    const char* OK_EDGE       = "#2222E0";
-    const char* BAD_EDGE      = "#E02222";
-    const char* FREE_EDGE     = "#20B412";
-    const char* FREE_OUTLINE  = "#26721F";
-    const char* FREE_FILL     = "#64BD6C";
-    const char* TAIL_OUTLINE  = "#666666";
-    const char* TAIL_FILL     = "#DDDDDD";
-    const char* HEAD_OUTLINE  = "#666666";
-    const char* HEAD_FILL     = "#DDDDDD";
+
 
     char* dotPath = getTimestampedString(".log/dot-", ".txt", callCount);
     if (!dotPath) {
         fprintf(f, "<h1><b>Dot file name composition for this graph dump</h1><b>\n");
-        return -1;
+        return Fail;
     }
 
     FILE* dot = fopen(dotPath, "w");
     if (!dot) {
         fprintf(f, "<h1><b>Dot file open failed for this graph dump</h1><b>\n");
         free(dotPath);
-        return -1;
+        return Fail;
     }
 
     fprintf(dot, "digraph G {\n"
@@ -207,6 +173,8 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
                  "edge [color=\"%s\", penwidth=1.5, weight = 0, arrowsize=0.8, arrowhead=vee];\n"
                  "free [shape=box, style=\"filled\", color=\"%s\", "
                        "fillcolor=\"%s\", label=\"FREE\", fontsize=28]\n"
+                 "freeTail [shape=box, style=\"filled\", color=\"%s\", "
+                       "fillcolor=\"%s\", label=\"FREE TAIL\", fontsize=28]\n"
                  "head [shape=box, style=\"filled\", color=\"%s\", "
                        "fillcolor=\"%s\", label=\"HEAD\", fontsize=28]\n"
                  "tail [shape=box, style=\"filled\", color=\"%s\", "
@@ -215,6 +183,7 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
                  BAD_OUTLINE, BAD_FILL,
                  BG_COLOR,
                  FREE_OUTLINE, FREE_FILL,
+                 FREE_OUTLINE, FREE_FILL,
                  HEAD_OUTLINE, HEAD_FILL,
                  TAIL_OUTLINE, TAIL_FILL);
 
@@ -222,7 +191,7 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
     if (!isFree) {
         fprintf(dot, "Failed to allocate isFree for this graph dump!\n");
         free(dotPath);
-        return -1;
+        return Fail;
     }
     for (ListIndex i = lst->free; i < lst->capacity && i != 0; i = lst->next[i]) {
         if (!lst->isDoubleLinked || (!lst->prev[i] && i != lst->next[0])) {
@@ -305,7 +274,7 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
         fprintf(dot, "Failed to allocate isBroken for this graph dump!\n");
         free(isFree);
         free(dotPath);
-        return -1;
+        return Fail;
     }
 
     // main
@@ -347,9 +316,10 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
     isBroken = NULL;
     isFree = NULL;
 
-    fprintf(dot, "free -> node%lu [color=\"%s\"]\n", lst->free, FREE_EDGE);
-    fprintf(dot, "head -> node%lu [color=\"%s\"]\n", lst->next[0], OK_EDGE);
-    fprintf(dot, "tail -> node%lu [color=\"%s\"]\n", lst->prev[0], OK_EDGE);
+    fprintf(dot, "free     -> node%lu [color=\"%s\"]\n", lst->free, FREE_EDGE);
+    fprintf(dot, "freeTail -> node%lu [color=\"%s\"]\n", lst->freeTail, FREE_EDGE);
+    fprintf(dot, "head     -> node%lu [color=\"%s\"]\n", lst->next[0], OK_EDGE);
+    fprintf(dot, "tail     -> node%lu [color=\"%s\"]\n", lst->prev[0], OK_EDGE);
 
     fprintf(dot, "}\n");
     fclose(dot);
@@ -361,7 +331,7 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
     if (!imgPath) {
         fprintf(f, "<h1><b>Image file path composition failed for this graph dump!</h1><b>\n");
         free(dotPath);
-        return -1;
+        return Fail;
     }
     snprintf(cmd, MAX_DOT_COMMAND_LENGTH, "dot -T svg \"%s\" -o \"%s\"", dotPath, imgPath);
     system(cmd);
@@ -370,12 +340,12 @@ static int listGraphDump(FILE* f, List* lst, unsigned int callCount) {
     free(dotPath);
     free(imgPath);
 
-    return 0;
+    return OK;
 }
 
 static char* getTimestampedString(const char* prefix, const char* suffix, unsigned int count) {
     time_t timeAbs = time(NULL);
-    tm* localTime = localtime(&timeAbs);
+    struct tm* localTime = localtime(&timeAbs);
     char* name    = (char*)calloc(MAX_TIMESTAMPED_FILE_PATH_LENGTH, sizeof(char));
     char* pattern = (char*)calloc(MAX_TIMESTAMPED_FILE_PATH_LENGTH, sizeof(char));
     if (!pattern || !name) {
