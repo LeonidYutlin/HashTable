@@ -1,12 +1,13 @@
 #include "dump.h"
+#include "utils.h"
 #include <assert.h>
-#include <time.h>
 #include <string.h>
 #include <stdlib.h>
 
-#define MAX_TIMESTAMPED_FILE_PATH_LENGTH 128
-#define MAX_IMAGE_FILE_PATH_LENGTH 128
-#define MAX_DOT_COMMAND_LENGTH 512
+#define IMG_PATH_BUF_SZ  128
+#define DOT_PATH_BUF_SZ  128
+#define HTML_PATH_BUF_SZ 128
+#define DOT_CMD_BUF_SZ   512
 
 static const char* BG_COLOR      = "#FFFFFF";
 static const char* BAD_OUTLINE   = "#602222";
@@ -28,7 +29,6 @@ static const char* TAIL_FILL     = "#DDDDDD";
 static const char* HEAD_OUTLINE  = "#666666";
 static const char* HEAD_FILL     = "#DDDDDD";
 
-static char* getTimestampedString(const char* prefix, const char* suffix, uint count);
 static int listTextDump(FILE* f, List* lst,
                         const char* commentary, 
                         const char* filename, int line,
@@ -56,18 +56,17 @@ Error listDump_(FILE* f, List* lst, const char* commentary,
 }
 
 FILE* initLogFile() {
-    char* name = getTimestampedString(".log/", ".html", 0);
-    if (!name)
-        return NULL;
+    char name[HTML_PATH_BUF_SZ] = {};
+    if (snTimestampedFilename(name, HTML_PATH_BUF_SZ,
+                              ".log/", ".html", 0))
+      return NULL;
 
     FILE* f = fopen(name, "w");
     if (!f) {
-        free(name);
         return NULL;
     }
 
     fprintf(f, "<pre><h1>%s</h1>\n", name);
-    free(name);
     return f;
 }
 
@@ -127,12 +126,11 @@ static int listTextDump(FILE* f, List* lst,
         return 1;
 
     for (ListIndex i = 0; i < lst->capacity; i++) {
-        fprintf(f,
-                "\t| %-12lu | %-12d | %-12lu | %-12lu |\n"
-                "\t|              |              |              |              |\n",
-                i, lst->data[i],
-                isNextNull ? 0 : lst->next[i],
-                isPrevNull ? 0 : lst->prev[i]);
+      fprintf(f,
+              "\t| "LIST_INDEX_FMT" | "LIST_UNIT_FMT" | "LIST_INDEX_FMT" | "LIST_INDEX_FMT" |\n"
+              "\t----------------------------------------------\n",
+              i, LIST_UNIT_FMT_ARGS(lst->data + i),
+              isNextNull ? 0 : lst->next[i], isPrevNull ? 0 : lst->prev[i]);
     }
     fprintf(f, "</b>}\n");
 
@@ -149,10 +147,8 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
         return Fail;
     }
 
-
-
-    char* dotPath = getTimestampedString(".log/dot-", ".txt", callCount);
-    if (!dotPath) {
+    char dotPath[DOT_PATH_BUF_SZ] = {};
+    if (snTimestampedFilename(dotPath, DOT_PATH_BUF_SZ, ".log/dot-", ".txt", callCount)) {
         fprintf(f, "<h1><b>Dot file name composition for this graph dump</h1><b>\n");
         return Fail;
     }
@@ -160,7 +156,6 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
     FILE* dot = fopen(dotPath, "w");
     if (!dot) {
         fprintf(f, "<h1><b>Dot file open failed for this graph dump</h1><b>\n");
-        free(dotPath);
         return Fail;
     }
 
@@ -190,7 +185,6 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
     bool* isFree = (bool*)calloc(lst->capacity, sizeof(bool));
     if (!isFree) {
         fprintf(dot, "Failed to allocate isFree for this graph dump!\n");
-        free(dotPath);
         return Fail;
     }
     for (ListIndex i = lst->free; i < lst->capacity && i != 0; i = lst->next[i]) {
@@ -215,7 +209,7 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
                         "<td bgcolor=\"%s\"><b>next:</b> %lu</td>"
                     "</tr>"
                     "<tr>"
-                        "<td colspan=\"6\" bgcolor=\"%s\"><b>value:</b> %d</td>"
+                        "<td colspan=\"6\" bgcolor=\"%s\"><b>value:</b> "LIST_UNIT_FMT"</td>"
                     "</tr>"
                     "<tr>"
                         "<td colspan=\"6\" bgcolor=\"%s\"><b>addr:</b> %p</td>"
@@ -229,7 +223,7 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
                     PREV_FILL,    lst->prev[i],
                     INDEX_FILL,   i,
                     NEXT_FILL,    lst->next[i],
-                    VALUE_FILL,   lst->data[i],
+                    VALUE_FILL,   LIST_UNIT_FMT_ARGS(lst->data + i),
                     ADDRESS_FILL, lst->data + i);
         else
             fprintf(dot,
@@ -241,7 +235,7 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
                         "<td bgcolor=\"%s\"><b>next:</b> %lu</td>"
                     "</tr>"
                     "<tr>"
-                        "<td colspan=\"5\" bgcolor=\"%s\"><b>value:</b> %d</td>"
+                        "<td colspan=\"5\" bgcolor=\"%s\"><b>value:</b>"LIST_UNIT_FMT"</td>"
                     "</tr>"
                     "<tr>"
                         "<td colspan=\"5\" bgcolor=\"%s\"><b>addr:</b> %p</td>"
@@ -254,7 +248,7 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
                     TABLE_OUTLINE,
                     INDEX_FILL,   i,
                     NEXT_FILL,    lst->next[i],
-                    VALUE_FILL,   lst->data[i],
+                    VALUE_FILL,   LIST_UNIT_FMT_ARGS(lst->data + i),
                     ADDRESS_FILL, lst->data + i);
     }
 
@@ -273,7 +267,6 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
     if (!isBroken) {
         fprintf(dot, "Failed to allocate isBroken for this graph dump!\n");
         free(isFree);
-        free(dotPath);
         return Fail;
     }
 
@@ -326,52 +319,17 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
 
     fputs("Graphical Dump:\n", f);
 
-    char cmd[MAX_DOT_COMMAND_LENGTH] = {0};
-    char* imgPath = getTimestampedString(".log/graph-", ".svg", callCount);
-    if (!imgPath) {
+    char cmd[DOT_CMD_BUF_SZ] = {0};
+    char imgPath[IMG_PATH_BUF_SZ] = {0};
+    if (snTimestampedFilename(imgPath, IMG_PATH_BUF_SZ, 
+                              ".log/graph-", ".svg", callCount)) {
         fprintf(f, "<h1><b>Image file path composition failed for this graph dump!</h1><b>\n");
-        free(dotPath);
         return Fail;
     }
-    snprintf(cmd, MAX_DOT_COMMAND_LENGTH, "dot -T svg \"%s\" -o \"%s\"", dotPath, imgPath);
+    snprintf(cmd, DOT_CMD_BUF_SZ, "dot -T svg \"%s\" -o \"%s\"", dotPath, imgPath);
     system(cmd);
 
     fprintf(f, "<img src=\"./%s\"></img>\n", imgPath + strlen(".log/"));
-    free(dotPath);
-    free(imgPath);
 
     return OK;
-}
-
-static char* getTimestampedString(const char* prefix, const char* suffix, unsigned int count) {
-    time_t timeAbs = time(NULL);
-    struct tm* localTime = localtime(&timeAbs);
-    char* name    = (char*)calloc(MAX_TIMESTAMPED_FILE_PATH_LENGTH, sizeof(char));
-    char* pattern = (char*)calloc(MAX_TIMESTAMPED_FILE_PATH_LENGTH, sizeof(char));
-    if (!pattern || !name) {
-        free(name);
-        free(pattern);
-        return NULL;
-    }
-
-    if (count) {
-        snprintf(pattern, MAX_TIMESTAMPED_FILE_PATH_LENGTH,
-                 "%s%%d-%%m-%%Y-%%H:%%M:%%S-%u%s",
-                 prefix,
-                 count,
-                 suffix);
-    } else {
-        snprintf(pattern, MAX_TIMESTAMPED_FILE_PATH_LENGTH,
-                 "%s%%d-%%m-%%Y-%%H:%%M:%%S%s",
-                 prefix,
-                 suffix);
-    }
-
-    if (!strftime(name, MAX_TIMESTAMPED_FILE_PATH_LENGTH, pattern, localTime)){
-        free(name);
-        free(pattern);
-        return NULL;
-    }
-    free(pattern);
-    return name;
 }

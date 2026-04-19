@@ -3,22 +3,40 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
+#include "entry.h"
 #include "error.h"
 
-typedef int ListUnit;
-typedef unsigned long ListIndex;
+typedef uint64_t ListIndex;
+#define LIST_INDEX_FMT "%lu"
+
+/// everything needed to change the type that List stores
+typedef Entry ListUnit;
+extern const ListUnit LIST_UNIT_CANARY;
+extern const ListUnit LIST_UNIT_ZERO;
+#define LIST_UNIT_COMPARISON(a, b) memcmp(&(a), &(b), sizeof(ListUnit))
+#define LIST_UNIT_FMT \
+  "data = %.*s "      \
+  "size = %zu "       \
+  "hash = %lu "       \
+  "value = %lu"
+#define LIST_UNIT_FMT_ARGS(a)        \
+  (int)(a)->key.size, (a)->key.data, \
+  (a)->key.size,                     \
+  (a)->hash, (a)->value
+///
 
 typedef struct {
-    ListIndex capacity;
-    bool isDoubleLinked;
-    ListUnit*    data;
-    ListIndex*   next;
-    ListIndex*   prev;
-    ListIndex    free;
-    ListIndex    freeTail;
-    Error status;
-    bool initialized;
+  ListIndex capacity;
+  bool isDoubleLinked;
+  ListUnit*  data;
+  ListIndex* next;
+  ListIndex* prev;
+  ListIndex  free;
+  ListIndex  freeTail;
+  Error status;
+  bool initialized;
 } List;
 
 Error listInit(List* lst, size_t initialCapacity, bool isDoubleLinked);

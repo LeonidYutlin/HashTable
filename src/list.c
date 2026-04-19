@@ -4,15 +4,14 @@
 #include <assert.h>
 #include <string.h>
 
-static const ListUnit CANARY = (ListUnit)0xAAAbD0CC;
-static const size_t   REALLOC_MULT = 2;
+const ListUnit LIST_UNIT_CANARY = (ListUnit){
+  .key = {"Wal@pa1@", 8},
+  .hash = 0xBABABABA,
+  .value = 0xABDEFFFF,
+};
+const ListUnit LIST_UNIT_ZERO = (ListUnit){0};
 
-#define RETURN_WITH_STATUS(value, returnValue)     \
-  {                                                \
-    if (status)                                    \
-      *status = value;                             \
-    return returnValue;                            \
-  }
+static const size_t REALLOC_MULT = 2;
 
 static ListIndex  linkNewUnit(List* lst, ListIndex prev, ListIndex next, ListUnit value);
 static Error reallocateList(List* lst, size_t newCapacity);
@@ -32,10 +31,9 @@ Error listInit(List* lst, size_t initialCapacity, bool isDoubleLinked) {
   ListUnit*  tempDataPtr = (ListUnit*)calloc(actualCapacity, sizeof(ListUnit));
   ListIndex* tempNextPtr = (ListIndex*)calloc(actualCapacity, sizeof(ListIndex));
   ListIndex* tempPrevPtr = isDoubleLinked
-    ? (ListIndex*)calloc(actualCapacity, sizeof(ListIndex))
-    : NULL;
-  if (!tempDataPtr || 
-      !tempNextPtr || 
+                           ? (ListIndex*)calloc(actualCapacity, sizeof(ListIndex))
+                           : NULL;
+  if (!tempDataPtr || !tempNextPtr || 
       (isDoubleLinked && !tempPrevPtr)) {
     free(tempDataPtr); free(tempNextPtr); free(tempPrevPtr);
     return FailMemoryAllocation;
@@ -53,7 +51,7 @@ Error listInit(List* lst, size_t initialCapacity, bool isDoubleLinked) {
     .initialized = true, 
   };
 
-  lst->data[0] = CANARY;
+  lst->data[0] = LIST_UNIT_CANARY;
   for (ListIndex i = 2; i < actualCapacity; i++)
     lst->next[i - 1] = i;
 
@@ -140,7 +138,7 @@ Error listDelete(List* lst, ListIndex index) {
 
   lst->next[lst->prev[index]] = lst->next[index];
   lst->prev[lst->next[index]] = lst->prev[index];
-  lst->data[index] = 0;
+  lst->data[index] = LIST_UNIT_ZERO;
   ListIndex oldFree = lst->free;
   lst->free = index;
   if (!lst->freeTail)
@@ -208,9 +206,11 @@ ListIndex listGetNext(List* lst, ListIndex index, Error* status) {
 }
 
 ListUnit listGetValue(List* lst, ListIndex index, Error* status) {
-  VERIFY_LIST();
+  Error err = listVerify(lst);
+  if (err)
+    RETURN_WITH_STATUS(err, LIST_UNIT_ZERO);
   if (IS_INVALID_INDEX(index))
-    RETURN_WITH_STATUS(BadArgs, 0);
+    RETURN_WITH_STATUS(BadArgs, LIST_UNIT_ZERO);
 
   return lst->data[index];
 }
@@ -240,6 +240,8 @@ Error listVerify(List* lst) {
     return BadArgs;
   if (!lst->initialized)
     return Uninitialized;
+  if (!lst->capacity)
+    return BadSize;
   CHECK(!lst->data || !lst->next ||
         (lst->isDoubleLinked && !lst->prev), 
         NullPointerField);
@@ -248,7 +250,8 @@ Error listVerify(List* lst) {
         lst->free     > lst->capacity ||
         lst->freeTail > lst->capacity, 
         BadIndex);
-  CHECK(lst->data[0] != CANARY, CorruptedCanary);
+  CHECK(LIST_UNIT_COMPARISON(lst->data[0], LIST_UNIT_CANARY) != 0, 
+        CorruptedCanary);
   return (lst->status = OK);
 }
 
@@ -352,7 +355,7 @@ static Error reallocateList(List* lst, size_t newCapacity) {
 
   // initialize new free elements
   for (ListIndex i = lst->capacity; i < newCapacity; i++) {
-    lst->data[i] = 0;
+    lst->data[i] = LIST_UNIT_ZERO;
     if (lst->isDoubleLinked)
       lst->prev[i] = 0;
     if (i != lst->capacity)
@@ -385,5 +388,4 @@ static ListIndex linkNewUnit(List* lst, ListIndex prev, ListIndex next, ListUnit
   return center;
 }
 
-#undef RETURN_WITH_STATUS
 #undef IS_INVALID_INDEX

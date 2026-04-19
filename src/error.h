@@ -1,6 +1,13 @@
 #ifndef ERROR_H
 #define ERROR_H
 
+#define RETURN_WITH_STATUS(value, returnValue)     \
+  {                                                \
+    if (status)                                    \
+      *status = value;                             \
+    return returnValue;                            \
+  }
+
 typedef enum {
     OK = 0,
     Fail,
@@ -15,8 +22,9 @@ typedef enum {
     BadIndex,
     LoopedConnections,
     DanglingUnit,
+    LongFormat,
+    BadSize,
+    NotFound,
 } Error;
-
-
 
 #endif
