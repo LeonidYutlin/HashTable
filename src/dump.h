@@ -2,7 +2,7 @@
 #define DUMP_H
 
 #include <stdio.h>
-#include "list.h"
+#include "hashtable.h"
 
 /*
 Accounted situations:
@@ -18,8 +18,13 @@ Accounted situations:
 Error listDump_(FILE* f, List* lst, const char* commentary, 
                 const char* filename, int line);
 
+Error hashTableDump_(FILE* f, HashTable* table, const char* commentary, 
+                     const char* filename, int line);
+
 #define listDump(f, lst, commentary) \
         listDump_(f, lst, commentary, __FILE__, __LINE__)
+#define hashTableDump(f, table, commentary) \
+        hashTableDump_(f, table, commentary, __FILE__, __LINE__)
 
 FILE* initLogFile();
 

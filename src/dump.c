@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+static uint CALL_COUNT = 0;
+
 #define IMG_PATH_BUF_SZ  128
 #define DOT_PATH_BUF_SZ  128
 #define HTML_PATH_BUF_SZ 128
@@ -31,48 +33,121 @@ static const char* HEAD_FILL     = "#DDDDDD";
 
 static int listTextDump(FILE* f, List* lst,
                         const char* commentary, 
-                        const char* filename, int line,
-                        uint callCount);
-static int listGraphDump(FILE* f, List* lst, uint callCount);
+                        const char* filename, int line);
+static int listGraphDump(FILE* f, List* lst);
+static int hashTableTextDump(FILE* f, HashTable* table,
+                             const char* commentary, 
+                             const char* filename, int line);
+static int hashTableGraphDump(FILE* f, HashTable* table);
 
 #define WARNING_PREFIX(condition) condition ? "<b><body><font color=\"red\">[!]</font></body></b>" : ""
 
 Error listDump_(FILE* f, List* lst, const char* commentary, 
-                const char* filename, int line) {
-    if (!f || !filename || !commentary)
-      return BadArgs;
+    const char* filename, int line) {
+  if (!f || !filename || !commentary)
+    return BadArgs;
 
-    static uint callCount = 0;
-    ++callCount;
+  ++CALL_COUNT;
 
-    listVerify(lst);
-    listLoopCheck(lst);
+  listVerify(lst);
+  listLoopCheck(lst);
 
-    if (listTextDump(f, lst, commentary, 
-                     filename, line, callCount))
-        return OK;
+  if (listTextDump(f, lst, commentary, 
+                   filename, line))
+    return OK;
 
-    return listGraphDump(f, lst, callCount);
+  fputs("Graphical Dump:\n", f);
+  return listGraphDump(f, lst);
+}
+
+Error hashTableDump_(FILE* f, HashTable* table, const char* commentary, 
+                     const char* filename, int line) {
+  if (!f || !filename || !commentary)
+    return BadArgs;
+
+  ++CALL_COUNT;
+
+  hashTableVerify(table);
+
+  if (hashTableTextDump(f, table, commentary, 
+                        filename, line))
+    return OK;
+
+  return hashTableGraphDump(f, table);
 }
 
 FILE* initLogFile() {
-    char name[HTML_PATH_BUF_SZ] = {};
-    if (snTimestampedFilename(name, HTML_PATH_BUF_SZ,
-                              ".log/", ".html", 0))
-      return NULL;
+  char name[HTML_PATH_BUF_SZ] = {};
+  if (snTimestampedFilename(name, HTML_PATH_BUF_SZ,
+                            ".log/", ".html", 0))
+    return NULL;
 
-    FILE* f = fopen(name, "w");
-    if (!f) {
-        return NULL;
+  FILE* f = fopen(name, "w");
+  if (!f) {
+    return NULL;
+  }
+
+  fprintf(f, "<pre><h1>%s</h1>\n", name);
+  return f;
+}
+
+static int hashTableTextDump(FILE* f, HashTable* table,
+                             const char* commentary, const char* filename, 
+                             int line) {
+  assert(f);
+  assert(filename);
+  assert(commentary);
+
+  if (!table) {
+    fprintf(f,
+            "%s\n"
+            "HashTable Dump #%u called from %s:%d\n"
+            "Textual Dump:\n"
+            "HashTable [NULL] {}\n",
+            commentary,
+            CALL_COUNT, filename, line);
+    return Fail;
+  }
+
+  fprintf(f,
+          "%s\n"
+          "HashTable Dump #%u called from %s:%d\n"
+          "Textual Dump:\n"
+          "HashTable [%p] {\n"
+          "\t%sbuckets = %p\n"
+          "\tbucketCount = %zu\n"
+          "\t%shashFunc = %p\n"
+          "\t%sinitialized = %s\n"
+          "}\n",
+          commentary,
+          CALL_COUNT, filename, line,
+          table,
+          WARNING_PREFIX(!table->buckets), table->buckets,
+          table->bucketCount,
+          WARNING_PREFIX(!table->hashFunc), table->hashFunc,
+          WARNING_PREFIX(!table->initialized), table->initialized ? "true" : "false");
+
+  return table->buckets ? OK : Fail;
+}
+
+static int hashTableGraphDump(FILE* f, HashTable* table) {
+    assert(f);
+    assert(table);
+    assert(table->buckets);
+
+    Error err = OK;
+    for (size_t i = 0; i < table->bucketCount; i++) {
+      ++CALL_COUNT;
+      if ((err = (Error)listGraphDump(f, table->buckets + i))) 
+          return (int)err;
     }
 
-    fprintf(f, "<pre><h1>%s</h1>\n", name);
-    return f;
+    return OK;
 }
 
 static int listTextDump(FILE* f, List* lst,
-                        const char* commentary, const char* filename, int line,
-                        uint callCount) {
+                        const char* commentary, const char* filename, 
+                        int line) {
     assert(f);
     assert(filename);
     assert(commentary);
@@ -84,8 +159,8 @@ static int listTextDump(FILE* f, List* lst,
             "Textual Dump:\n"
             "List [NULL] {}\n",
             commentary,
-            callCount, filename, line);
-        return 1;
+            CALL_COUNT, filename, line);
+        return Fail;
     }
 
     bool isDataNull = !lst->data;
@@ -109,7 +184,7 @@ static int listTextDump(FILE* f, List* lst,
             "\t%sprev = %p\n"
             "\t<b>|     index    |     data     |     next     |     prev     |\n",
             commentary,
-            callCount, filename, line,
+            CALL_COUNT, filename, line,
             lst,
             lst->capacity,
             lst->isDoubleLinked ? "true" : "false",
@@ -123,7 +198,7 @@ static int listTextDump(FILE* f, List* lst,
             WARNING_PREFIX(isPrevNull && lst->isDoubleLinked),  lst->prev);
 
     if (isDataNull)
-        return 1;
+        return Fail;
 
     for (ListIndex i = 0; i < lst->capacity; i++) {
       fprintf(f,
@@ -131,13 +206,14 @@ static int listTextDump(FILE* f, List* lst,
               "\t----------------------------------------------\n",
               i, LIST_UNIT_FMT_ARGS(lst->data + i),
               isNextNull ? 0 : lst->next[i], isPrevNull ? 0 : lst->prev[i]);
+
     }
     fprintf(f, "</b>}\n");
 
-    return 0;
+    return OK;
 }
 
-static int listGraphDump(FILE* f, List* lst, uint callCount) {
+static int listGraphDump(FILE* f, List* lst) {
     assert(f);
     assert(lst);
 
@@ -148,7 +224,7 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
     }
 
     char dotPath[DOT_PATH_BUF_SZ] = {};
-    if (snTimestampedFilename(dotPath, DOT_PATH_BUF_SZ, ".log/dot-", ".txt", callCount)) {
+    if (snTimestampedFilename(dotPath, DOT_PATH_BUF_SZ, ".log/dot-", ".txt", CALL_COUNT)) {
         fprintf(f, "<h1><b>Dot file name composition for this graph dump</h1><b>\n");
         return Fail;
     }
@@ -317,12 +393,10 @@ static int listGraphDump(FILE* f, List* lst, uint callCount) {
     fprintf(dot, "}\n");
     fclose(dot);
 
-    fputs("Graphical Dump:\n", f);
-
     char cmd[DOT_CMD_BUF_SZ] = {0};
     char imgPath[IMG_PATH_BUF_SZ] = {0};
     if (snTimestampedFilename(imgPath, IMG_PATH_BUF_SZ, 
-                              ".log/graph-", ".svg", callCount)) {
+                              ".log/graph-", ".svg", CALL_COUNT)) {
         fprintf(f, "<h1><b>Image file path composition failed for this graph dump!</h1><b>\n");
         return Fail;
     }
